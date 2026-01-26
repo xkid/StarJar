@@ -1,0 +1,7 @@
+{
+  "name": "StarJar - Kids Reward Tracker",
+  "description": "A fun and engaging app to track reward points for children. Manage profiles, log activities, and redeem rewards with a coin sound effect.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
