@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
-import { Plus, Settings, UserPlus, ArrowLeft, Trash2, Camera } from 'lucide-react';
+import { Plus, Settings, UserPlus, ArrowLeft, Trash2, Camera, Key } from 'lucide-react';
 import { Child, ActivityLog } from './types';
-import { getChildren, saveChildren, getLogs, addLogEntry, updateLogEntry, deleteLogEntry, deleteChildData } from './services/storage';
+import { getChildren, saveChildren, getLogs, addLogEntry, updateLogEntry, deleteLogEntry, deleteChildData, getStoredApiKey, saveApiKey } from './services/storage';
 import ChildCard from './components/ChildCard';
 import ActivityForm from './components/ActivityForm';
 import HistoryView from './components/HistoryView';
@@ -18,6 +18,7 @@ const DEFAULT_AVATAR = "https://api.dicebear.com/7.x/fun-emoji/svg?seed=";
 const Dashboard: React.FC = () => {
   const [children, setChildren] = useState<Child[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -29,13 +30,22 @@ const Dashboard: React.FC = () => {
       {/* Header */}
       <header className="bg-white sticky top-0 z-10 border-b border-slate-100 shadow-sm px-6 py-4 flex justify-between items-center">
         <h1 className="text-2xl font-black text-indigo-600 tracking-tight">StarJar</h1>
-        <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"
-        >
-          <UserPlus className="w-4 h-4" />
-          Add Child
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setIsSettingsOpen(true)}
+            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+            title="Settings"
+          >
+            <Settings className="w-5 h-5" />
+          </button>
+          <button 
+            onClick={() => setIsAddModalOpen(true)}
+            className="bg-indigo-600 text-white px-4 py-2 rounded-full font-bold text-sm shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all flex items-center gap-2"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span className="hidden sm:inline">Add Child</span>
+          </button>
+        </div>
       </header>
 
       {/* Content */}
@@ -79,6 +89,63 @@ const Dashboard: React.FC = () => {
           }} 
         />
       )}
+
+      {/* Settings Modal */}
+      {isSettingsOpen && (
+        <SettingsModal onClose={() => setIsSettingsOpen(false)} />
+      )}
+    </div>
+  );
+};
+
+const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [apiKey, setApiKey] = useState(getStoredApiKey() || '');
+
+  const handleSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveApiKey(apiKey.trim());
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
+        <h2 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+          <Settings className="w-6 h-6 text-slate-400" />
+          Settings
+        </h2>
+        <form onSubmit={handleSave}>
+          <div className="mb-6">
+            <label className="block text-sm font-semibold text-slate-600 mb-2 flex items-center gap-2">
+              <Key className="w-4 h-4" />
+              Gemini API Key
+            </label>
+            <input 
+              type="password" 
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-0 outline-none font-medium text-slate-700"
+              placeholder="Enter your API Key"
+              autoFocus
+            />
+            <p className="text-xs text-slate-400 mt-2">
+              Your key is stored locally in your browser to power AI features. 
+              <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="text-indigo-500 hover:underline ml-1">
+                Get a key here
+              </a>.
+            </p>
+          </div>
+
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">
+              Cancel
+            </button>
+            <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all">
+              Save
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 };

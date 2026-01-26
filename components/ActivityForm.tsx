@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Sparkles, Minus, Plus, Coins, Gift } from 'lucide-react';
 import { suggestActivity } from '../services/ai';
+import { getStoredApiKey } from '../services/storage';
 import { ActivityLog } from '../types';
 
 // Sounds
@@ -27,6 +28,8 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ childId, initialData, onSav
   const [category, setCategory] = useState<'chore' | 'behavior' | 'redemption' | 'other'>(
     initialData?.category || (effectiveMode === 'earn' ? 'chore' : 'redemption')
   );
+
+  const hasApiKey = !!(getStoredApiKey() || process.env.API_KEY);
 
   // Audio refs for button interaction
   const audioPlus = useRef(new Audio(SOUND_BTN_PLUS));
@@ -102,7 +105,7 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ childId, initialData, onSav
                 autoFocus
                 required
               />
-              {process.env.API_KEY && (
+              {hasApiKey && (
                 <button 
                   type="button"
                   onClick={handleAiSuggest}

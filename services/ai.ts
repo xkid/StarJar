@@ -1,9 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ActivitySuggestion } from "../types";
-
-const apiKey = process.env.API_KEY;
+import { getStoredApiKey } from "./storage";
 
 export const suggestActivity = async (input: string): Promise<ActivitySuggestion | null> => {
+  // Prioritize stored key, then env key
+  const apiKey = getStoredApiKey() || process.env.API_KEY;
+
   if (!apiKey) return null;
 
   try {

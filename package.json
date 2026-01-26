@@ -1,7 +1,7 @@
 {
-  "name": "starjar---kids-reward-tracker",
+  "name": "starjar",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,14 +11,15 @@
   "dependencies": {
     "@google/genai": "^1.38.0",
     "lucide-react": "^0.563.0",
-    "react-router-dom": "^7.13.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-router-dom": "^7.1.5"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
-    "@vitejs/plugin-react": "^5.0.0",
-    "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
   }
 }

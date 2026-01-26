@@ -2,6 +2,7 @@ import { Child, ActivityLog } from '../types';
 
 const KIDS_KEY = 'starjar_kids';
 const LOGS_KEY = 'starjar_logs';
+const API_KEY_KEY = 'starjar_api_key';
 
 export const getChildren = (): Child[] => {
   try {
@@ -97,4 +98,12 @@ export const deleteChildData = (childId: string) => {
 
   saveChildren(children);
   saveLogs(logs);
+};
+
+export const getStoredApiKey = (): string | null => {
+  return localStorage.getItem(API_KEY_KEY);
+};
+
+export const saveApiKey = (key: string) => {
+  localStorage.setItem(API_KEY_KEY, key);
 };
