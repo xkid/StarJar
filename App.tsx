@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
-import { Plus, Settings, UserPlus, ArrowLeft, Trash2, Camera, Key } from 'lucide-react';
+import { Plus, Settings, UserPlus, ArrowLeft, Trash2, Camera, Key, GripVertical, RotateCcw, Video, Pencil } from 'lucide-react';
 import { Child, ActivityLog } from './types';
 import { getChildren, saveChildren, getLogs, addLogEntry, updateLogEntry, deleteLogEntry, deleteChildData, getStoredApiKey, saveApiKey } from './services/storage';
 import ChildCard from './components/ChildCard';
@@ -8,8 +8,8 @@ import ActivityForm from './components/ActivityForm';
 import HistoryView from './components/HistoryView';
 
 // --- Constants ---
-const COIN_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; 
-const REDEEM_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3"; // Magic wand/success
+const COIN_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; // Arcade coin
+const REDEEM_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3"; // Coin drop
 
 const DEFAULT_AVATAR = "https://api.dicebear.com/7.x/fun-emoji/svg?seed=";
 
@@ -19,11 +19,53 @@ const Dashboard: React.FC = () => {
   const [children, setChildren] = useState<Child[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     setChildren(getChildren());
   }, []);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    // Required for Firefox
+    e.dataTransfer.effectAllowed = "move"; 
+    // Make the drag ghost transparent or custom if desired, but default is okay
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault(); // Allow drop
+    if (draggedIndex === null || draggedIndex === index) return;
+    
+    // Optional: Visual feedback could go here
+  };
+
+  const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null) return;
+
+    const newChildren = [...children];
+    const [draggedItem] = newChildren.splice(draggedIndex, 1);
+    newChildren.splice(dropIndex, 0, draggedItem);
+    
+    setChildren(newChildren);
+    saveChildren(newChildren);
+    setDraggedIndex(null);
+  };
+
+  const handleSaveChild = (childData: Partial<Child>) => {
+    // This is for adding new child
+    const newChild: Child = {
+      id: Date.now().toString(),
+      name: childData.name || 'Unknown',
+      avatarUrl: childData.avatarUrl || `${DEFAULT_AVATAR}${Date.now()}`,
+      totalPoints: 0
+    };
+    const updated = [...children, newChild];
+    saveChildren(updated);
+    setChildren(updated);
+    setIsAddModalOpen(false);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-20">
@@ -66,11 +108,16 @@ const Dashboard: React.FC = () => {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            {children.map(child => (
+            {children.map((child, index) => (
               <ChildCard 
                 key={child.id} 
                 child={child} 
-                onClick={() => navigate(`/child/${child.id}`)} 
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDrop={(e) => handleDrop(e, index)}
+                onClick={() => navigate(`/child/${child.id}`)}
+                className={`transition-opacity ${draggedIndex === index ? 'opacity-50' : 'opacity-100'}`}
               />
             ))}
           </div>
@@ -79,14 +126,9 @@ const Dashboard: React.FC = () => {
 
       {/* Add Child Modal */}
       {isAddModalOpen && (
-        <AddChildModal 
+        <ChildModal 
           onClose={() => setIsAddModalOpen(false)} 
-          onSave={(newChild) => {
-            const updated = [...children, newChild];
-            saveChildren(updated);
-            setChildren(updated);
-            setIsAddModalOpen(false);
-          }} 
+          onSave={handleSaveChild} 
         />
       )}
 
@@ -157,13 +199,20 @@ const ChildDetail: React.FC = () => {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   
   // Modal State
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'earn' | 'redeem'>('earn');
   const [editingLog, setEditingLog] = useState<ActivityLog | undefined>(undefined);
 
   // Sound refs
   const coinAudio = useRef<HTMLAudioElement>(new Audio(COIN_SOUND_URL));
   const redeemAudio = useRef<HTMLAudioElement>(new Audio(REDEEM_SOUND_URL));
+
+  // Preload sounds
+  useEffect(() => {
+    coinAudio.current.volume = 0.6;
+    redeemAudio.current.volume = 0.6;
+  }, []);
 
   const loadData = useCallback(() => {
     const allChildren = getChildren();
@@ -185,14 +234,13 @@ const ChildDetail: React.FC = () => {
   const handleOpenAdd = (mode: 'earn' | 'redeem') => {
     setEditingLog(undefined);
     setModalMode(mode);
-    setIsModalOpen(true);
+    setIsActivityModalOpen(true);
   };
 
-  const handleOpenEdit = (log: ActivityLog) => {
+  const handleOpenEditLog = (log: ActivityLog) => {
     setEditingLog(log);
-    // Mode is inferred in the form, but we can set a default
     setModalMode(log.points >= 0 ? 'earn' : 'redeem');
-    setIsModalOpen(true);
+    setIsActivityModalOpen(true);
   };
 
   const handleDeleteLog = (log: ActivityLog) => {
@@ -211,7 +259,6 @@ const ChildDetail: React.FC = () => {
         ...editingLog,
         ...entry
       });
-      // No sound for edit usually, or maybe a subtle one? Keeping it silent for now.
     } else {
       // Add new
       const newLog: ActivityLog = {
@@ -241,6 +288,18 @@ const ChildDetail: React.FC = () => {
     }
   };
 
+  const handleUpdateProfile = (data: Partial<Child>) => {
+    if (!child) return;
+    const allChildren = getChildren();
+    const index = allChildren.findIndex(c => c.id === child.id);
+    if (index !== -1) {
+      allChildren[index] = { ...allChildren[index], ...data };
+      saveChildren(allChildren);
+      loadData();
+    }
+    setIsEditProfileOpen(false);
+  };
+
   if (!child) return null;
 
   return (
@@ -251,9 +310,14 @@ const ChildDetail: React.FC = () => {
           <ArrowLeft className="w-6 h-6" />
         </button>
         <span className="font-bold text-slate-700">{child.name}'s Profile</span>
-        <button onClick={handleDeleteChild} className="p-2 -mr-2 text-rose-300 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors">
-          <Trash2 className="w-5 h-5" />
-        </button>
+        <div className="flex items-center">
+          <button onClick={() => setIsEditProfileOpen(true)} className="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors mr-1">
+            <Pencil className="w-5 h-5" />
+          </button>
+          <button onClick={handleDeleteChild} className="p-2 -mr-2 text-rose-300 hover:text-rose-600 hover:bg-rose-50 rounded-full transition-colors">
+            <Trash2 className="w-5 h-5" />
+          </button>
+        </div>
       </div>
 
       <div className="max-w-3xl mx-auto p-4 space-y-6">
@@ -264,8 +328,14 @@ const ChildDetail: React.FC = () => {
           <div className="absolute bottom-0 right-0 w-40 h-40 bg-purple-400/20 rounded-full translate-x-1/3 translate-y-1/3 blur-xl"></div>
           
           <div className="relative z-10 flex flex-col items-center">
-            <div className="w-24 h-24 rounded-full border-4 border-white/30 shadow-lg mb-4 bg-white/10 backdrop-blur-sm overflow-hidden">
+            <div className="w-24 h-24 rounded-full border-4 border-white/30 shadow-lg mb-4 bg-white/10 backdrop-blur-sm overflow-hidden relative group">
                <img src={child.avatarUrl} alt="avatar" className="w-full h-full object-cover" />
+               <button 
+                onClick={() => setIsEditProfileOpen(true)}
+                className="absolute inset-0 bg-black/30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+               >
+                 <Pencil className="w-8 h-8 text-white" />
+               </button>
             </div>
             <h2 className="text-3xl font-black mb-1">{child.name}</h2>
             <div className="text-6xl font-black tracking-tighter drop-shadow-md my-2">
@@ -296,84 +366,189 @@ const ChildDetail: React.FC = () => {
           <h3 className="text-lg font-bold text-slate-700 mb-4 px-2">History</h3>
           <HistoryView 
             logs={logs} 
-            onEdit={handleOpenEdit}
+            onEdit={handleOpenEditLog}
             onDelete={handleDeleteLog}
           />
         </div>
       </div>
 
       {/* Activity Modal */}
-      {isModalOpen && (
+      {isActivityModalOpen && (
         <ActivityForm 
           childId={child.id}
           mode={modalMode}
           initialData={editingLog}
-          onClose={() => setIsModalOpen(false)}
+          onClose={() => setIsActivityModalOpen(false)}
           onSave={handleSaveActivity}
+        />
+      )}
+
+      {/* Edit Profile Modal */}
+      {isEditProfileOpen && (
+        <ChildModal
+          initialData={child}
+          onClose={() => setIsEditProfileOpen(false)}
+          onSave={handleUpdateProfile}
         />
       )}
     </div>
   );
 };
 
-// --- Add Child Modal ---
-const AddChildModal: React.FC<{ onClose: () => void, onSave: (c: Child) => void }> = ({ onClose, onSave }) => {
-  const [name, setName] = useState('');
-  // Use a generic random seed for avatar initially
-  const [avatarSeed, setAvatarSeed] = useState(Date.now().toString());
-  
+// --- Child Modal (Add/Edit) ---
+interface ChildModalProps {
+  onClose: () => void;
+  onSave: (data: Partial<Child>) => void;
+  initialData?: Child;
+}
+
+const ChildModal: React.FC<ChildModalProps> = ({ onClose, onSave, initialData }) => {
+  const [name, setName] = useState(initialData?.name || '');
+  const [avatarUrl, setAvatarUrl] = useState(initialData?.avatarUrl || `${DEFAULT_AVATAR}${Date.now()}`);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'user', width: 300, height: 300 } 
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraOpen(true);
+    } catch (err) {
+      console.error("Camera access failed", err);
+      alert("Unable to access camera. Please check permissions.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraOpen(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement('canvas');
+      // Set canvas size to video size
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        // Draw video frame to canvas
+        ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+        
+        // Optional: Crop to square
+        const size = Math.min(canvas.width, canvas.height);
+        const startX = (canvas.width - size) / 2;
+        const startY = (canvas.height - size) / 2;
+        
+        const squareCanvas = document.createElement('canvas');
+        squareCanvas.width = size;
+        squareCanvas.height = size;
+        const squareCtx = squareCanvas.getContext('2d');
+        
+        if (squareCtx) {
+           squareCtx.drawImage(canvas, startX, startY, size, size, 0, 0, size, size);
+           const dataUrl = squareCanvas.toDataURL('image/jpeg', 0.8);
+           setAvatarUrl(dataUrl);
+        }
+      }
+    }
+    stopCamera();
+  };
+
+  useEffect(() => {
+    return () => stopCamera();
+  }, []);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    onSave({ name, avatarUrl });
+  };
 
-    const newChild: Child = {
-      id: Date.now().toString(),
-      name,
-      avatarUrl: `${DEFAULT_AVATAR}${avatarSeed}`,
-      totalPoints: 0
-    };
-    onSave(newChild);
+  const randomizeAvatar = () => {
+    setAvatarUrl(`${DEFAULT_AVATAR}${Date.now()}`);
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
-        <h2 className="text-xl font-bold text-slate-800 mb-6">New Profile</h2>
-        <form onSubmit={handleSubmit}>
-          
-          <div className="flex flex-col items-center mb-6">
-            <div className="w-24 h-24 rounded-full bg-slate-100 mb-3 overflow-hidden border-2 border-slate-100 relative group cursor-pointer" onClick={() => setAvatarSeed(Date.now().toString())}>
-               <img src={`${DEFAULT_AVATAR}${avatarSeed}`} alt="avatar preview" className="w-full h-full object-cover" />
-               <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                 <Camera className="text-white w-8 h-8" />
-               </div>
+        <h2 className="text-xl font-bold text-slate-800 mb-6">{initialData ? 'Edit Profile' : 'New Profile'}</h2>
+        
+        {!isCameraOpen ? (
+          <form onSubmit={handleSubmit}>
+            <div className="flex flex-col items-center mb-6">
+              <div className="relative group">
+                <div className="w-24 h-24 rounded-full bg-slate-100 mb-3 overflow-hidden border-2 border-slate-100 relative cursor-pointer" onClick={startCamera}>
+                  <img src={avatarUrl} alt="avatar preview" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera className="text-white w-8 h-8" />
+                  </div>
+                </div>
+              </div>
+              
+              <div className="flex gap-4 text-sm">
+                <button type="button" onClick={startCamera} className="flex items-center gap-1 text-indigo-500 font-semibold hover:underline">
+                  <Camera className="w-4 h-4" /> Take Photo
+                </button>
+                <span className="text-slate-300">|</span>
+                <button type="button" onClick={randomizeAvatar} className="flex items-center gap-1 text-indigo-500 font-semibold hover:underline">
+                  <RotateCcw className="w-4 h-4" /> Randomize
+                </button>
+              </div>
             </div>
-            <button type="button" onClick={() => setAvatarSeed(Date.now().toString())} className="text-xs text-indigo-500 font-semibold hover:underline">
-              Randomize Avatar
-            </button>
-          </div>
 
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-slate-600 mb-2">Name</label>
-            <input 
-              type="text" 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-0 outline-none font-bold text-slate-700"
-              placeholder="e.g. Alice"
-              autoFocus
-            />
-          </div>
+            <div className="mb-6">
+              <label className="block text-sm font-semibold text-slate-600 mb-2">Name</label>
+              <input 
+                type="text" 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full p-3 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:ring-0 outline-none font-bold text-slate-700"
+                placeholder="e.g. Alice"
+                autoFocus
+              />
+            </div>
 
-          <div className="flex gap-3">
-            <button type="button" onClick={onClose} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">
-              Cancel
-            </button>
-            <button type="submit" disabled={!name} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition-all">
-              Create
-            </button>
+            <div className="flex gap-3">
+              <button type="button" onClick={onClose} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">
+                Cancel
+              </button>
+              <button type="submit" disabled={!name} className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 disabled:opacity-50 transition-all">
+                {initialData ? 'Save Changes' : 'Create'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="flex flex-col items-center">
+             <div className="w-full aspect-square bg-black rounded-xl overflow-hidden mb-4 relative">
+                <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
+                <div className="absolute inset-0 border-4 border-white/20 rounded-full scale-75 pointer-events-none"></div>
+             </div>
+             <div className="flex gap-3 w-full">
+                <button 
+                  onClick={stopCamera} 
+                  className="flex-1 py-3 text-slate-500 font-bold bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={capturePhoto} 
+                  className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center gap-2"
+                >
+                  <Camera className="w-5 h-5" /> Capture
+                </button>
+             </div>
           </div>
-        </form>
+        )}
       </div>
     </div>
   );

@@ -5,7 +5,7 @@ import { getStoredApiKey } from '../services/storage';
 import { ActivityLog } from '../types';
 
 // Sounds
-const SOUND_BTN_PLUS = "https://assets.mixkit.co/active_storage/sfx/2578/2578-preview.mp3"; // Light coin
+const SOUND_BTN_PLUS = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; // Arcade coin
 const SOUND_BTN_MINUS = "https://assets.mixkit.co/active_storage/sfx/2003/2003-preview.mp3"; // Coin drop/clink
 
 interface ActivityFormProps {
