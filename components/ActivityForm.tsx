@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sparkles, Minus, Plus, Coins, Gift } from 'lucide-react';
+import { X, Sparkles, Minus, Plus, Coins, Gift, AlertCircle } from 'lucide-react';
 import { suggestActivity } from '../services/ai';
 import { getStoredApiKey } from '../services/storage';
 import { ActivityLog } from '../types';
@@ -14,18 +14,40 @@ interface ActivityFormProps {
   onSave: (log: Omit<ActivityLog, 'id' | 'timestamp'>) => void;
   onClose: () => void;
   mode?: 'earn' | 'redeem';
+  availablePoints?: number;
 }
 
-const ActivityForm: React.FC<ActivityFormProps> = ({ childId, initialData, onSave, onClose, mode: propMode }) => {
+const ActivityForm: React.FC<ActivityFormProps> = ({ 
+  childId, 
+  initialData, 
+  onSave, 
+  onClose, 
+  mode: propMode,
+  availablePoints 
+}) => {
   // Determine mode from initialData if available, otherwise use prop
   const effectiveMode = initialData 
     ? (initialData.points >= 0 ? 'earn' : 'redeem') 
     : (propMode || 'earn');
 
+  // Calculate Max Redeemable Points
+  // If editing an existing redemption, we effectively have "current balance + what was spent on this item" available to spend.
+  const currentBalance = availablePoints ?? Infinity;
+  const maxRedeemable = effectiveMode === 'redeem' 
+    ? currentBalance + (initialData && initialData.points < 0 ? Math.abs(initialData.points) : 0)
+    : Infinity;
+
+  // Initialize points - ensure we don't start above max for new redemptions
+  const getInitialPoints = () => {
+    if (initialData) return Math.abs(initialData.points);
+    // For new redemption, default to 10 but cap at max available. If max < 1, 0.
+    return effectiveMode === 'redeem' ? Math.min(10, Math.max(0, maxRedeemable)) : 10;
+  };
+
   const [description, setDescription] = useState(initialData?.description || '');
-  const [points, setPoints] = useState(initialData ? Math.abs(initialData.points) : 10);
+  const [points, setPoints] = useState(getInitialPoints());
   const [isAiLoading, setIsAiLoading] = useState(false);
-  const [category, setCategory] = useState<'chore' | 'behavior' | 'redemption' | 'other'>(
+  const [category, setCategory] = useState<ActivityLog['category']>(
     initialData?.category || (effectiveMode === 'earn' ? 'chore' : 'redemption')
   );
 
@@ -57,12 +79,15 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ childId, initialData, onSav
       setDescription(suggestion.description);
       // Ensure points polarity matches mode
       const absPoints = Math.abs(suggestion.points);
-      setPoints(absPoints);
+      // Cap at max redeemable if redeeming
+      setPoints(Math.min(absPoints, maxRedeemable));
     }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (effectiveMode === 'redeem' && points > maxRedeemable) return;
+
     const finalPoints = effectiveMode === 'redeem' ? -Math.abs(points) : Math.abs(points);
     onSave({
       childId,
@@ -73,7 +98,16 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ childId, initialData, onSav
     onClose();
   };
 
+  const handlePointsChange = (newPoints: number) => {
+    if (effectiveMode === 'redeem') {
+      setPoints(Math.min(Math.max(0, newPoints), maxRedeemable));
+    } else {
+      setPoints(Math.max(1, newPoints));
+    }
+  };
+
   const presetAmounts = [5, 10, 20, 50, 100];
+  const isOverBudget = effectiveMode === 'redeem' && points > maxRedeemable;
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-4">
@@ -121,32 +155,47 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ childId, initialData, onSav
 
           {/* Points Control */}
           <div className="space-y-2">
-            <label className="text-sm font-semibold text-gray-600 block">Points</label>
+            <div className="flex justify-between items-end">
+              <label className="text-sm font-semibold text-gray-600 block">Points</label>
+              {effectiveMode === 'redeem' && (
+                <span className={`text-xs font-bold ${isOverBudget ? 'text-rose-500' : 'text-slate-400'}`}>
+                  Available: {maxRedeemable} pts
+                </span>
+              )}
+            </div>
+            
             <div className="flex items-center gap-4">
               <button 
                 type="button"
                 onClick={() => {
                   playSound('minus');
-                  setPoints(Math.max(1, points - 1));
+                  handlePointsChange(points - 1);
                 }}
-                className="p-4 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all text-slate-600"
+                disabled={points <= 0}
+                className="p-4 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all text-slate-600 disabled:opacity-50"
               >
                 <Minus className="w-6 h-6" />
               </button>
               
-              <div className="flex-1 text-center">
+              <div className="flex-1 text-center relative">
                 <span className={`text-5xl font-bold ${effectiveMode === 'earn' ? 'text-emerald-500' : 'text-rose-500'}`}>
                   {points}
                 </span>
+                {effectiveMode === 'redeem' && maxRedeemable === 0 && (
+                   <div className="absolute top-full left-0 w-full text-center text-xs text-rose-500 font-bold mt-1">
+                     Insufficient Points
+                   </div>
+                )}
               </div>
 
               <button 
                 type="button"
                 onClick={() => {
                   playSound('plus');
-                  setPoints(points + 1);
+                  handlePointsChange(points + 1);
                 }}
-                className="p-4 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all text-slate-600"
+                disabled={effectiveMode === 'redeem' && points >= maxRedeemable}
+                className="p-4 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 transition-all text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Plus className="w-6 h-6" />
               </button>
@@ -160,12 +209,13 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ childId, initialData, onSav
                   type="button"
                   onClick={() => {
                     playSound('plus');
-                    setPoints(amt);
+                    handlePointsChange(amt);
                   }}
+                  disabled={effectiveMode === 'redeem' && amt > maxRedeemable}
                   className={`px-3 py-1 rounded-full text-xs font-medium border transition-colors ${
                     points === amt 
                       ? (effectiveMode === 'earn' ? 'bg-emerald-100 border-emerald-300 text-emerald-700' : 'bg-rose-100 border-rose-300 text-rose-700')
-                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300'
+                      : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 disabled:opacity-30 disabled:cursor-not-allowed'
                   }`}
                 >
                   {amt}
@@ -177,13 +227,17 @@ const ActivityForm: React.FC<ActivityFormProps> = ({ childId, initialData, onSav
           {/* Submit Button */}
           <button 
             type="submit" 
+            disabled={effectiveMode === 'redeem' && (points > maxRedeemable || points === 0)}
             className={`w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg active:scale-[0.98] transition-all flex items-center justify-center gap-2 ${
               effectiveMode === 'earn' 
                 ? 'bg-gradient-to-r from-emerald-400 to-teal-500 shadow-emerald-200' 
-                : 'bg-gradient-to-r from-rose-400 to-pink-500 shadow-rose-200'
+                : 'bg-gradient-to-r from-rose-400 to-pink-500 shadow-rose-200 disabled:from-slate-300 disabled:to-slate-400 disabled:shadow-none'
             }`}
           >
-            {initialData ? 'Update' : (effectiveMode === 'earn' ? 'Add Points' : 'Redeem Points')}
+             {effectiveMode === 'redeem' && points > maxRedeemable 
+               ? 'Insufficient Points' 
+               : (initialData ? 'Update' : (effectiveMode === 'earn' ? 'Add Points' : 'Redeem Points'))
+             }
           </button>
         </form>
       </div>

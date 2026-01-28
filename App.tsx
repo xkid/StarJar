@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
-import { Plus, Settings, UserPlus, ArrowLeft, Trash2, Camera, Key, GripVertical, RotateCcw, Video, Pencil } from 'lucide-react';
-import { Child, ActivityLog } from './types';
-import { getChildren, saveChildren, getLogs, addLogEntry, updateLogEntry, deleteLogEntry, deleteChildData, getStoredApiKey, saveApiKey } from './services/storage';
+import { Plus, Settings, UserPlus, ArrowLeft, Trash2, Camera, Key, GripVertical, RotateCcw, Video, Pencil, Landmark, Lock, TrendingUp, Download, Upload } from 'lucide-react';
+import { Child, ActivityLog, Investment } from './types';
+import { getChildren, saveChildren, getLogs, addLogEntry, updateLogEntry, deleteLogEntry, deleteChildData, getStoredApiKey, saveApiKey, checkMaturedInvestments, getInvestments, getBanks, withdrawInvestment, exportData, importData } from './services/storage';
 import ChildCard from './components/ChildCard';
 import ActivityForm from './components/ActivityForm';
 import HistoryView from './components/HistoryView';
+import InvestmentModal from './components/InvestmentModal';
+import InvestmentDetailModal from './components/InvestmentDetailModal';
 
 // --- Constants ---
 const COIN_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; // Arcade coin
@@ -23,6 +25,8 @@ const Dashboard: React.FC = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Check for FD maturities globally on dashboard load
+    checkMaturedInvestments();
     setChildren(getChildren());
   }, []);
 
@@ -149,6 +153,41 @@ const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     onClose();
   };
 
+  const handleExport = () => {
+    const json = exportData();
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `starjar_backup_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!confirm("This will overwrite all current data. Are you sure you want to restore?")) {
+      e.target.value = ''; // Reset input
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const content = event.target?.result as string;
+      if (importData(content)) {
+        alert("Data restored successfully!");
+        window.location.reload(); // Reload to reflect changes
+      } else {
+        e.target.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl p-6 animate-in zoom-in-95 duration-200">
@@ -178,7 +217,26 @@ const SettingsModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="mb-6 pt-6 border-t border-slate-100">
+            <h3 className="text-sm font-bold text-slate-800 mb-3">Data Backup</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <button 
+                type="button"
+                onClick={handleExport}
+                className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-50 border-2 border-slate-100 rounded-xl hover:border-indigo-200 hover:bg-indigo-50 transition-all text-slate-600 font-bold"
+              >
+                <Download className="w-6 h-6 text-indigo-500" />
+                <span className="text-xs">Export Data</span>
+              </button>
+              <label className="flex flex-col items-center justify-center gap-2 p-4 bg-slate-50 border-2 border-slate-100 rounded-xl hover:border-indigo-200 hover:bg-indigo-50 transition-all text-slate-600 font-bold cursor-pointer">
+                <Upload className="w-6 h-6 text-indigo-500" />
+                <span className="text-xs">Import Data</span>
+                <input type="file" accept=".json" onChange={handleImport} className="hidden" />
+              </label>
+            </div>
+          </div>
+
+          <div className="flex gap-3 mt-6">
             <button type="button" onClick={onClose} className="flex-1 py-3 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition-colors">
               Cancel
             </button>
@@ -197,10 +255,14 @@ const ChildDetail: React.FC = () => {
   const navigate = useNavigate();
   const [child, setChild] = useState<Child | null>(null);
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   
   // Modal State
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isInvestModalOpen, setIsInvestModalOpen] = useState(false);
+  const [selectedInvestment, setSelectedInvestment] = useState<Investment | null>(null);
+  
   const [modalMode, setModalMode] = useState<'earn' | 'redeem'>('earn');
   const [editingLog, setEditingLog] = useState<ActivityLog | undefined>(undefined);
 
@@ -215,6 +277,8 @@ const ChildDetail: React.FC = () => {
   }, []);
 
   const loadData = useCallback(() => {
+    checkMaturedInvestments(); // Check for maturities first
+    
     const allChildren = getChildren();
     const found = allChildren.find(c => c.id === id);
     if (!found) {
@@ -225,6 +289,11 @@ const ChildDetail: React.FC = () => {
     
     const allLogs = getLogs();
     setLogs(allLogs.filter(l => l.childId === id));
+
+    const allInv = getInvestments();
+    const banks = getBanks(); // Ensure we use latest bank info
+    
+    setInvestments(allInv.filter(i => i.childId === id && i.status === 'active'));
   }, [id, navigate]);
 
   useEffect(() => {
@@ -300,7 +369,21 @@ const ChildDetail: React.FC = () => {
     setIsEditProfileOpen(false);
   };
 
+  const handleInvestmentSuccess = () => {
+    setIsInvestModalOpen(false);
+    redeemAudio.current.currentTime = 0;
+    redeemAudio.current.play().catch(() => {});
+    loadData();
+  };
+
+  const handleWithdraw = (invId: string) => {
+    withdrawInvestment(invId);
+    setSelectedInvestment(null);
+    loadData();
+  };
+
   if (!child) return null;
+  const banks = getBanks();
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -361,6 +444,69 @@ const ChildDetail: React.FC = () => {
           </div>
         </div>
 
+        {/* Investment Section */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-bold text-slate-700 flex items-center gap-2">
+              <Landmark className="w-5 h-5 text-indigo-500" />
+              My FD Investments
+            </h3>
+            <button 
+              onClick={() => setIsInvestModalOpen(true)}
+              className="text-sm font-bold text-indigo-600 hover:bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              + Open FD
+            </button>
+          </div>
+          
+          {investments.length === 0 ? (
+            <div className="text-center py-6 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+               <TrendingUp className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+               <p className="text-slate-400 text-sm">Grow your points by investing!</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {investments.map(inv => {
+                const bank = banks.find(b => b.id === inv.bankId);
+                const matureDate = new Date(inv.maturityDate);
+                const progress = Math.min(100, Math.max(0, ((Date.now() - inv.startDate) / (inv.maturityDate - inv.startDate)) * 100));
+
+                return (
+                  <div 
+                    key={inv.id} 
+                    onClick={() => setSelectedInvestment(inv)}
+                    className="bg-white border border-slate-200 rounded-xl p-3 relative overflow-hidden shadow-sm cursor-pointer hover:shadow-md transition-all active:scale-[0.99]"
+                  >
+                    <div className="absolute top-0 left-0 w-1 h-full bg-slate-200">
+                      <div className="bg-indigo-500 w-full transition-all duration-1000" style={{ height: `${progress}%` }}></div>
+                    </div>
+                    <div className="pl-3 flex justify-between items-center">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className={`text-xs font-bold px-1.5 py-0.5 rounded text-white ${bank?.color || 'bg-slate-500'}`}>
+                            {bank?.name}
+                          </span>
+                          <span className="text-xs text-slate-400 flex items-center gap-1">
+                             <Lock className="w-3 h-3" /> {inv.durationMonths} Mo
+                          </span>
+                        </div>
+                        <div className="font-bold text-slate-700 text-lg mt-1">
+                          {inv.principal} <span className="text-xs text-slate-400 font-normal">pts</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                         <div className="text-xs text-indigo-500 font-bold uppercase tracking-wider">Returns</div>
+                         <div className="font-bold text-indigo-600">+{inv.projectedReturn}</div>
+                         <div className="text-[10px] text-slate-400">{matureDate.toLocaleDateString()}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         {/* History Section */}
         <div>
           <h3 className="text-lg font-bold text-slate-700 mb-4 px-2">History</h3>
@@ -380,6 +526,7 @@ const ChildDetail: React.FC = () => {
           initialData={editingLog}
           onClose={() => setIsActivityModalOpen(false)}
           onSave={handleSaveActivity}
+          availablePoints={child.totalPoints}
         />
       )}
 
@@ -389,6 +536,24 @@ const ChildDetail: React.FC = () => {
           initialData={child}
           onClose={() => setIsEditProfileOpen(false)}
           onSave={handleUpdateProfile}
+        />
+      )}
+
+      {/* Investment Modal */}
+      {isInvestModalOpen && (
+        <InvestmentModal
+          child={child}
+          onClose={() => setIsInvestModalOpen(false)}
+          onSuccess={handleInvestmentSuccess}
+        />
+      )}
+
+      {/* Investment Detail Modal */}
+      {selectedInvestment && (
+        <InvestmentDetailModal
+          investment={selectedInvestment}
+          onClose={() => setSelectedInvestment(null)}
+          onWithdraw={handleWithdraw}
         />
       )}
     </div>
