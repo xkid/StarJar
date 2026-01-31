@@ -577,18 +577,25 @@ const ChildModal: React.FC<ChildModalProps> = ({ onClose, onSave, initialData })
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: 'user', width: 300, height: 300 } 
+        video: { facingMode: 'user', width: { ideal: 300 }, height: { ideal: 300 } } 
       });
       streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
       setIsCameraOpen(true);
+      // Removed immediate assignment to videoRef.current because it is likely null here (element not mounted)
+      // The useEffect below will handle assignment once the video element is rendered.
     } catch (err) {
       console.error("Camera access failed", err);
       alert("Unable to access camera. Please check permissions.");
     }
   };
+
+  // Effect to attach stream when video element becomes available
+  useEffect(() => {
+    if (isCameraOpen && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      videoRef.current.play().catch(e => console.error("Video play failed", e));
+    }
+  }, [isCameraOpen]);
 
   const stopCamera = () => {
     if (streamRef.current) {
@@ -599,7 +606,7 @@ const ChildModal: React.FC<ChildModalProps> = ({ onClose, onSave, initialData })
   };
 
   const capturePhoto = () => {
-    if (videoRef.current) {
+    if (videoRef.current && videoRef.current.videoWidth > 0) {
       const canvas = document.createElement('canvas');
       // Set canvas size to video size
       canvas.width = videoRef.current.videoWidth;

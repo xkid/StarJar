@@ -2,9 +2,22 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { ActivitySuggestion } from "../types";
 import { getStoredApiKey } from "./storage";
 
+// Helper to safely get env var without crashing in browser if process is undefined
+const getEnvApiKey = () => {
+  try {
+    return typeof process !== 'undefined' && process.env ? process.env.API_KEY : undefined;
+  } catch (e) {
+    return undefined;
+  }
+};
+
+const cleanJson = (text: string): string => {
+  return text.replace(/^```json\s*/, '').replace(/^```\s*/, '').replace(/```$/, '').trim();
+};
+
 export const suggestActivity = async (input: string): Promise<ActivitySuggestion | null> => {
   // Prioritize stored key, then env key
-  const apiKey = getStoredApiKey() || process.env.API_KEY;
+  const apiKey = getStoredApiKey() || getEnvApiKey();
 
   if (!apiKey) return null;
 
@@ -37,7 +50,10 @@ export const suggestActivity = async (input: string): Promise<ActivitySuggestion
 
     const text = response.text;
     if (!text) return null;
-    return JSON.parse(text) as ActivitySuggestion;
+    
+    // Clean potential markdown formatting
+    const cleanedText = cleanJson(text);
+    return JSON.parse(cleanedText) as ActivitySuggestion;
 
   } catch (error) {
     console.error("Gemini AI Error:", error);
@@ -46,7 +62,7 @@ export const suggestActivity = async (input: string): Promise<ActivitySuggestion
 };
 
 export const fetchLiveBankRates = async (): Promise<{ rates: Record<string, number>, sources: { title: string, uri: string }[] } | null> => {
-  const apiKey = getStoredApiKey() || process.env.API_KEY;
+  const apiKey = getStoredApiKey() || getEnvApiKey();
   if (!apiKey) return null;
 
   try {
@@ -80,7 +96,9 @@ export const fetchLiveBankRates = async (): Promise<{ rates: Record<string, numb
     const text = response.text;
     if (!text) return null;
 
-    const rates = JSON.parse(text) as Record<string, number>;
+    // Clean potential markdown formatting
+    const cleanedText = cleanJson(text);
+    const rates = JSON.parse(cleanedText) as Record<string, number>;
     
     // Extract grounding chunks
     const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
