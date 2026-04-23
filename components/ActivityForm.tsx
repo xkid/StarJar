@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Sparkles, Minus, Plus, Coins, Gift, AlertCircle } from 'lucide-react';
+import { X, Sparkles, Minus, Plus, Coins, Gift, AlertCircle, Tag } from 'lucide-react';
 import { suggestActivity } from '../services/ai';
-import { getStoredApiKey } from '../services/storage';
-import { ActivityLog } from '../types';
+import { getStoredApiKey, getRules } from '../services/storage';
+import { ActivityLog, Rule } from '../types';
 
 // Sounds
 const SOUND_BTN_PLUS = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; // Arcade coin
@@ -62,6 +62,29 @@ const ActivityForm: React.FC<ActivityFormProps> = ({
     audioPlus.current.volume = 0.5;
     audioMinus.current.volume = 0.5;
   }, []);
+
+  const [rules, setRules] = useState<Rule[]>([]);
+  useEffect(() => {
+    const loadedRules = getRules();
+    // Filter rules depending on the mode
+    if (effectiveMode === 'earn') {
+      setRules(loadedRules.filter(r => r.points > 0));
+    } else {
+      setRules(loadedRules.filter(r => r.points <= 0));
+    }
+  }, [effectiveMode]);
+
+  const applyRule = (rule: Rule) => {
+    setDescription(rule.title);
+    setCategory(rule.category);
+    // Take the absolute value for the points UI
+    const absPoints = Math.abs(rule.points);
+    if (effectiveMode === 'redeem') {
+      setPoints(Math.min(absPoints, maxRedeemable));
+    } else {
+      setPoints(absPoints);
+    }
+  };
 
   const playSound = (type: 'plus' | 'minus') => {
     const audio = type === 'plus' ? audioPlus.current : audioMinus.current;
@@ -151,6 +174,27 @@ const ActivityForm: React.FC<ActivityFormProps> = ({
                 </button>
               )}
             </div>
+            
+            {/* Quick Rules */}
+            {!initialData && rules.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {rules.map(rule => (
+                  <button
+                    key={rule.id}
+                    type="button"
+                    onClick={() => applyRule(rule)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition-colors ${
+                      effectiveMode === 'earn' 
+                        ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100 hover:border-emerald-300' 
+                        : 'bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100 hover:border-rose-300'
+                    }`}
+                  >
+                    <Tag className="w-3 h-3" />
+                    {rule.title} ({Math.abs(rule.points)})
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Points Control */}

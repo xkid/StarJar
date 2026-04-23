@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { HashRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
-import { Plus, Settings, UserPlus, ArrowLeft, Trash2, Camera, Key, GripVertical, RotateCcw, Video, Pencil, Landmark, Lock, TrendingUp, Download, Upload } from 'lucide-react';
+import { Plus, Settings, UserPlus, ArrowLeft, Trash2, Camera, Key, GripVertical, RotateCcw, Video, Pencil, Landmark, Lock, TrendingUp, Download, Upload, ListChecks } from 'lucide-react';
 import { Child, ActivityLog, Investment } from './types';
 import { getChildren, saveChildren, getLogs, addLogEntry, updateLogEntry, deleteLogEntry, deleteChildData, getStoredApiKey, saveApiKey, checkMaturedInvestments, getInvestments, getBanks, withdrawInvestment, exportData, importData } from './services/storage';
 import ChildCard from './components/ChildCard';
@@ -8,6 +8,7 @@ import ActivityForm from './components/ActivityForm';
 import HistoryView from './components/HistoryView';
 import InvestmentModal from './components/InvestmentModal';
 import InvestmentDetailModal from './components/InvestmentDetailModal';
+import RulesModal from './components/RulesModal';
 
 // --- Constants ---
 const COIN_SOUND_URL = "https://assets.mixkit.co/active_storage/sfx/2000/2000-preview.mp3"; // Arcade coin
@@ -21,6 +22,7 @@ const Dashboard: React.FC = () => {
   const [children, setChildren] = useState<Child[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const navigate = useNavigate();
 
@@ -78,6 +80,13 @@ const Dashboard: React.FC = () => {
         <h1 className="text-2xl font-black text-indigo-600 tracking-tight">StarJar</h1>
         <div className="flex items-center gap-2">
           <button 
+            onClick={() => setIsRulesOpen(true)}
+            className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
+            title="Manage Rules"
+          >
+            <ListChecks className="w-5 h-5" />
+          </button>
+          <button 
             onClick={() => setIsSettingsOpen(true)}
             className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-full transition-colors"
             title="Settings"
@@ -134,6 +143,11 @@ const Dashboard: React.FC = () => {
           onClose={() => setIsAddModalOpen(false)} 
           onSave={handleSaveChild} 
         />
+      )}
+
+      {/* Rules Modal */}
+      {isRulesOpen && (
+        <RulesModal onClose={() => setIsRulesOpen(false)} />
       )}
 
       {/* Settings Modal */}

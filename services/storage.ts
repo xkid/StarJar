@@ -1,12 +1,18 @@
-import { Child, ActivityLog, Investment, Bank } from '../types';
+import { Child, ActivityLog, Investment, Bank, Rule } from '../types';
 
 const KIDS_KEY = 'starjar_kids';
 const LOGS_KEY = 'starjar_logs';
 const INVEST_KEY = 'starjar_investments';
 const API_KEY_KEY = 'starjar_api_key';
 const RATES_KEY = 'starjar_bank_rates';
+const RULES_KEY = 'starjar_rules';
 
 // Default / Fallback Data
+const DEFAULT_RULES: Rule[] = [
+  { id: 'r1', title: 'Helping hanging cloth', points: 5, category: 'chore' },
+  { id: 'r2', title: 'Crying', points: -5, category: 'behavior' },
+];
+
 const DEFAULT_BANKS: Bank[] = [
   {
     id: 'mbank',
@@ -48,6 +54,46 @@ export const getBanks = (): Bank[] => {
 
 export const updateBankRates = (newRates: Record<string, number>) => {
   localStorage.setItem(RATES_KEY, JSON.stringify(newRates));
+};
+
+export const getRules = (): Rule[] => {
+  try {
+    const data = localStorage.getItem(RULES_KEY);
+    return data ? JSON.parse(data) : DEFAULT_RULES;
+  } catch (e) {
+    console.error("Failed to load rules", e);
+    return DEFAULT_RULES;
+  }
+};
+
+export const saveRules = (rules: Rule[]) => {
+  localStorage.setItem(RULES_KEY, JSON.stringify(rules));
+};
+
+export const addRule = (rule: Omit<Rule, 'id'>) => {
+  const rules = getRules();
+  const newRule: Rule = {
+    ...rule,
+    id: Date.now().toString()
+  };
+  rules.push(newRule);
+  saveRules(rules);
+  return newRule;
+};
+
+export const updateRule = (updatedRule: Rule) => {
+  const rules = getRules();
+  const index = rules.findIndex(r => r.id === updatedRule.id);
+  if (index >= 0) {
+    rules[index] = updatedRule;
+    saveRules(rules);
+  }
+};
+
+export const deleteRule = (ruleId: string) => {
+  let rules = getRules();
+  rules = rules.filter(r => r.id !== ruleId);
+  saveRules(rules);
 };
 
 export const getChildren = (): Child[] => {
@@ -276,6 +322,7 @@ export const exportData = (): string => {
     children: getChildren(),
     logs: getLogs(),
     investments: getInvestments(),
+    rules: getRules(),
     version: 1,
     exportedAt: new Date().toISOString()
   };
@@ -296,6 +343,7 @@ export const importData = (jsonStr: string): boolean => {
     saveChildren(data.children);
     saveLogs(data.logs);
     saveInvestments(data.investments);
+    if (Array.isArray(data.rules)) saveRules(data.rules);
     
     return true;
   } catch (error) {

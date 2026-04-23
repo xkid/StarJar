@@ -5,6 +5,13 @@ export interface Child {
   totalPoints: number;
 }
 
+export interface Rule {
+  id: string;
+  title: string;
+  points: number;
+  category: 'chore' | 'behavior' | 'redemption' | 'investment' | 'other';
+}
+
 export interface ActivityLog {
   id: string;
   childId: string;
